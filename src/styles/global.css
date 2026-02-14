@@ -27,7 +27,7 @@ body,
 
 .hud {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 8px;
   padding: 10px;
   background: #0f172a;
@@ -181,6 +181,30 @@ body,
   padding: 8px;
   font-size: 13px;
   cursor: pointer;
+}
+
+.panel button.active {
+  background: #0ea5e9;
+  border-color: #7dd3fc;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.inline-buttons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.inline-buttons button {
+  min-width: 52px;
 }
 
 .blueprint-section {

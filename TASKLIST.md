@@ -32,4 +32,6 @@
 [x] 190 - In-world info bubbles: selected tile/entity + temporary agent action callouts
 [x] 195 - Pixel-art entity rendering with per-kind local sprites
 [x] 200 - New game reset flow (game-over banner + save panel action)
-[x] 205 - Third-party CC0 sprite pack integration (itch.io) + attribution
+[x] 205 - Custom in-repo pixel art sprites per entity/building/road kind
+[x] 210 - Autonomous expansion director: auto-build core infra + auto-scale citizens/couriers
+[x] 215 - Auto-expansion runtime toggle in UI (on/off command to worker)

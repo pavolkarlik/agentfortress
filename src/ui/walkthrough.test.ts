@@ -11,6 +11,7 @@ function createSnapshot(overrides: Partial<SimSnapshot> = {}): SimSnapshot {
   return {
     tick: 100,
     seed: 7,
+    autoExpansionEnabled: true,
     money: 500,
     population: 12,
     foodStock: 40,

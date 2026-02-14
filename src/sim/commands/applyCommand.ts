@@ -13,6 +13,7 @@ import {
   invalidatePathCache,
   InternalState,
   recordExpense,
+  setAutoExpansionEnabled,
   setBlueprint,
 } from '@sim/world/state'
 
@@ -23,6 +24,11 @@ export function applyCommand(state: InternalState, command: SimCommand): void {
 
   if (command.type === 'setBlueprint') {
     setBlueprint(state, command.kind, command.blueprint)
+    return
+  }
+
+  if (command.type === 'setAutoExpansion') {
+    setAutoExpansionEnabled(state, command.enabled)
     return
   }
 

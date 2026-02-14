@@ -36,6 +36,10 @@ export function Hud({ snapshot }: HudProps) {
         <strong>{snapshot.gameOver ? 'Game Over' : 'Running'}</strong>
       </div>
       <div className="hud-item">
+        <span>Auto Expand</span>
+        <strong>{snapshot.autoExpansionEnabled ? 'On' : 'Off'}</strong>
+      </div>
+      <div className="hud-item">
         <span>Daily Net</span>
         <strong>${snapshot.economy.lastDayNet}</strong>
       </div>

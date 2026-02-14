@@ -55,6 +55,7 @@ export interface EcsWorld {
 export interface InternalState {
   seed: number
   tick: number
+  autoExpansionEnabled: boolean
   money: number
   bankruptcyTicks: number
   bankruptcyDaysRemaining: number
@@ -77,6 +78,7 @@ export function createInitialState(config: InitConfig): InternalState {
   const state: InternalState = {
     seed: config.seed,
     tick: 0,
+    autoExpansionEnabled: true,
     money: 800,
     bankruptcyTicks: 0,
     bankruptcyDaysRemaining: Math.ceil(BANKRUPTCY_TICK_LIMIT / TICKS_PER_DAY),
@@ -112,6 +114,7 @@ export function migrateSaveBlob(blob: SaveBlob): SaveBlob {
   const migrated: SaveBlob = {
     ...blob,
     version: 3,
+    autoExpansionEnabled: blob.autoExpansionEnabled ?? true,
     bankruptcyDaysRemaining:
       blob.bankruptcyDaysRemaining ??
       Math.ceil(Math.max(0, BANKRUPTCY_TICK_LIMIT - blob.bankruptcyTicks) / TICKS_PER_DAY),
@@ -216,6 +219,7 @@ export function createSnapshot(state: InternalState): SimSnapshot {
   return {
     tick: state.tick,
     seed: state.seed,
+    autoExpansionEnabled: state.autoExpansionEnabled,
     money: state.money,
     population,
     foodStock,
@@ -246,6 +250,7 @@ export function createSaveBlob(state: InternalState): SaveBlob {
     version: 3,
     seed: state.seed,
     tick: state.tick,
+    autoExpansionEnabled: state.autoExpansionEnabled,
     money: state.money,
     bankruptcyTicks: state.bankruptcyTicks,
     bankruptcyDaysRemaining: state.bankruptcyDaysRemaining,
@@ -358,6 +363,10 @@ export function setBlueprint(
     [kind]: blueprint,
   })
   state.blueprints = normalized
+}
+
+export function setAutoExpansionEnabled(state: InternalState, enabled: boolean): void {
+  state.autoExpansionEnabled = enabled
 }
 
 export function addBuildingEntity(
@@ -531,6 +540,7 @@ function restoreFromSerializedEcs(blob: SaveBlob): InternalState {
   const state: InternalState = {
     seed: blob.seed,
     tick: blob.tick,
+    autoExpansionEnabled: blob.autoExpansionEnabled ?? true,
     money: blob.money,
     bankruptcyTicks: blob.bankruptcyTicks,
     bankruptcyDaysRemaining:
@@ -575,6 +585,7 @@ function restoreLegacyBlob(blob: SaveBlob): InternalState {
   const state: InternalState = {
     seed: blob.seed,
     tick: blob.tick,
+    autoExpansionEnabled: blob.autoExpansionEnabled ?? true,
     money: blob.money,
     bankruptcyTicks: blob.bankruptcyTicks,
     bankruptcyDaysRemaining:

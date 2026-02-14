@@ -218,6 +218,22 @@ export function AppShell() {
             }}
           />
           <SavePanel
+            autoExpansionEnabled={snapshot?.autoExpansionEnabled ?? true}
+            onSetAutoExpansion={async (enabled) => {
+              const activeClient = clientRef.current
+              const activeSnapshot = snapshotRef.current
+              if (!activeClient || !activeSnapshot) {
+                return
+              }
+
+              await activeClient.enqueueCommands([
+                {
+                  type: 'setAutoExpansion',
+                  tickId: activeSnapshot.tick,
+                  enabled,
+                },
+              ])
+            }}
             onSaveNow={async () => {
               const activeClient = clientRef.current
               if (!activeClient) {

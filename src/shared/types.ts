@@ -194,6 +194,7 @@ export interface PolicyRuntimeState {
 export interface SimSnapshot {
   tick: number
   seed: number
+  autoExpansionEnabled: boolean
   money: number
   population: number
   foodStock: number
@@ -240,7 +241,16 @@ export interface SetBlueprintCommand extends BaseCommand {
   blueprint: AgentBlueprint
 }
 
-export type SimCommand = BuildRoadCommand | PlaceBuildingCommand | SetBlueprintCommand
+export interface SetAutoExpansionCommand extends BaseCommand {
+  type: 'setAutoExpansion'
+  enabled: boolean
+}
+
+export type SimCommand =
+  | BuildRoadCommand
+  | PlaceBuildingCommand
+  | SetBlueprintCommand
+  | SetAutoExpansionCommand
 
 export type SerializedComponent<T> = Array<[EntityId, T]>
 
@@ -267,6 +277,7 @@ export interface SaveBlob {
   version: number
   seed: number
   tick: number
+  autoExpansionEnabled?: boolean
   money: number
   bankruptcyTicks: number
   bankruptcyDaysRemaining: number

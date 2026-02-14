@@ -24,6 +24,7 @@ describe('Save migration', () => {
     const migrated = migrateSaveBlob(legacyLikeBlob)
 
     expect(migrated.version).toBe(3)
+    expect(migrated.autoExpansionEnabled).toBe(true)
     expect(migrated.blueprints.courierBot.capacity).toBeGreaterThan(0)
     expect(migrated.economy.ledger).toEqual([])
     expect(migrated.policyRuntime).toEqual([])
@@ -49,6 +50,7 @@ describe('Save migration', () => {
     const restored = restoreState(legacyBlob)
 
     expect(restored.seed).toBe(saved.seed)
+    expect(restored.autoExpansionEnabled).toBe(true)
     expect(restored.ecs.building.size).toBeGreaterThan(0)
     expect(restored.blueprints.minibus.capacity).toBeGreaterThan(0)
     expect(restored.policyRuntime.size).toBe(0)

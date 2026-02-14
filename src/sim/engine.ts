@@ -12,6 +12,7 @@ import type {
 } from '@shared/types'
 import { applyCommand, applyEconomyTick } from '@sim/commands/applyCommand'
 import { runCourierSystem } from '@sim/systems/courierSystem'
+import { runExpansionSystem } from '@sim/systems/expansionSystem'
 import { runFoodSystem } from '@sim/systems/foodSystem'
 import { runMaintenanceSystem } from '@sim/systems/maintenanceSystem'
 import { runMovementSystem } from '@sim/systems/movementSystem'
@@ -180,6 +181,7 @@ export class SimEngine {
       return
     }
 
+    runExpansionSystem(this.state)
     runFoodSystem(this.state)
     runMaintenanceSystem(this.state)
     runCourierSystem(this.state)

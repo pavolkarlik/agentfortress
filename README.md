@@ -45,6 +45,10 @@ npm run build
 - Food loop: source -> warehouse/market -> citizen consumption
 - Transit loop: stop queues, boarding, fare income
 - Maintenance loop: wear, depot return, repair, service disruption
+- Autonomous expansion director:
+  - Auto-builds missing critical infrastructure (stops/roads and core service buildings)
+  - Auto-scales citizens and courier bots as city demand grows (budget-aware)
+  - Can be toggled on/off in the `Save / Load` panel
 - Policy cards:
   - Courier delivery rules
   - Bus line auto-scale on sustained high queues
@@ -102,5 +106,4 @@ A minimal GitHub Actions workflow can be added later to automate Pages deploy.
 
 ## Art Assets
 
-The renderer uses local pixel-art sprites in `src/render/sprites/`.  
-Third-party asset sources and licenses are documented in `ASSETS_ATTRIBUTION.md`.
+The renderer uses local custom pixel-art sprites in `src/render/sprites/`.
