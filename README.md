@@ -99,3 +99,8 @@ Deploy the generated `dist/` directory to Netlify/Vercel/GitHub Pages.
 3. Ensure SPA fallback serves `index.html`.
 
 A minimal GitHub Actions workflow can be added later to automate Pages deploy.
+
+## Art Assets
+
+The renderer uses local pixel-art sprites in `src/render/sprites/`.  
+Third-party asset sources and licenses are documented in `ASSETS_ATTRIBUTION.md`.

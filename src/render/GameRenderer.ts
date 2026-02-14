@@ -1,6 +1,23 @@
-import { Application, Container, Graphics, Text } from 'pixi.js'
+import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
 import { clamp } from '@shared/rng'
-import type { EntityDetails, OverlayMode, Position, SimSnapshot } from '@shared/types'
+import type {
+  AgentKind,
+  BuildingKind,
+  EntityDetails,
+  OverlayMode,
+  Position,
+  SimSnapshot,
+} from '@shared/types'
+import spriteAgentCitizenUrl from '@render/sprites/agent-citizen.png'
+import spriteAgentCourierBotUrl from '@render/sprites/agent-courier-bot.png'
+import spriteAgentMinibusUrl from '@render/sprites/agent-minibus.png'
+import spriteBuildingDepotUrl from '@render/sprites/building-depot.png'
+import spriteBuildingFoodSourceUrl from '@render/sprites/building-food-source.png'
+import spriteBuildingHousingUrl from '@render/sprites/building-housing.png'
+import spriteBuildingMarketUrl from '@render/sprites/building-market.png'
+import spriteBuildingStopUrl from '@render/sprites/building-stop.png'
+import spriteBuildingWarehouseUrl from '@render/sprites/building-warehouse.png'
+import spriteRoadUrl from '@render/sprites/road.png'
 
 interface CameraState {
   x: number
@@ -24,6 +41,12 @@ interface BubblePalette {
   text: number
 }
 
+interface SpriteAtlas {
+  road: Texture
+  building: Record<BuildingKind, Texture>
+  agent: Record<AgentKind, Texture>
+}
+
 const ACTION_BUBBLE_LIFETIME_TICKS = 80
 const MAX_VISIBLE_AGENT_ACTION_BUBBLES = 18
 const SELECTION_BUBBLE_PALETTE: BubblePalette = {
@@ -45,15 +68,20 @@ export class GameRenderer {
 
   private readonly worldLayer = new Container()
   private readonly terrainLayer = new Graphics()
-  private readonly roadLayer = new Graphics()
-  private readonly buildingLayer = new Graphics()
+  private readonly roadLayer = new Container()
+  private readonly buildingLayer = new Container()
+  private readonly agentLayer = new Container()
   private readonly overlayLayer = new Graphics()
   private readonly bubbleLayer = new Container()
 
   private readonly lastAgentDecisionKeys = new Map<number, string>()
   private readonly agentActionBubbles = new Map<number, AgentActionBubbleState>()
+  private readonly roadSprites = new Map<number, Sprite>()
+  private readonly buildingSprites = new Map<number, Sprite>()
+  private readonly agentSprites = new Map<number, Sprite>()
 
   private camera: CameraState = { x: 16, y: 16, zoom: 1 }
+  private sprites: SpriteAtlas | null = null
 
   private isPanning = false
   private didDrag = false
@@ -73,15 +101,17 @@ export class GameRenderer {
     await app.init({
       background: '#0f172a',
       resizeTo: host,
-      antialias: true,
+      antialias: false,
       preference: 'webgl',
     })
 
     this.app = app
+    await this.loadSprites()
 
     this.worldLayer.addChild(this.terrainLayer)
     this.worldLayer.addChild(this.roadLayer)
     this.worldLayer.addChild(this.buildingLayer)
+    this.worldLayer.addChild(this.agentLayer)
     this.worldLayer.addChild(this.overlayLayer)
     this.worldLayer.addChild(this.bubbleLayer)
     app.stage.addChild(this.worldLayer)
@@ -111,6 +141,9 @@ export class GameRenderer {
     this.removeInputListeners = null
     this.lastAgentDecisionKeys.clear()
     this.agentActionBubbles.clear()
+    this.clearSpriteMap(this.roadLayer, this.roadSprites)
+    this.clearSpriteMap(this.buildingLayer, this.buildingSprites)
+    this.clearSpriteMap(this.agentLayer, this.agentSprites)
 
     if (this.app) {
       this.app.destroy(true)
@@ -137,31 +170,127 @@ export class GameRenderer {
   }
 
   private drawRoads(snapshot: SimSnapshot): void {
-    this.roadLayer.clear()
-
-    for (const road of snapshot.roads) {
-      const px = road.x * this.tileSize + this.tileSize * 0.15
-      const py = road.y * this.tileSize + this.tileSize * 0.15
-      const size = this.tileSize * 0.7
-      this.roadLayer.roundRect(px, py, size, size, 4).fill(0x9ca3af)
+    if (!this.sprites) {
+      return
     }
+
+    this.syncSpriteLayer(
+      snapshot.roads,
+      this.roadLayer,
+      this.roadSprites,
+      () => this.sprites?.road ?? Texture.WHITE,
+      0.86,
+    )
   }
 
   private drawBuildings(snapshot: SimSnapshot): void {
-    this.buildingLayer.clear()
-
-    for (const building of snapshot.buildings) {
-      const px = building.x * this.tileSize + this.tileSize * 0.1
-      const py = building.y * this.tileSize + this.tileSize * 0.1
-      const size = this.tileSize * 0.8
-      this.buildingLayer.roundRect(px, py, size, size, 4).fill(colorForBuilding(building.kind))
+    if (!this.sprites) {
+      return
     }
 
-    for (const agent of snapshot.agents) {
-      const px = agent.x * this.tileSize + this.tileSize * 0.5
-      const py = agent.y * this.tileSize + this.tileSize * 0.5
-      const radius = this.tileSize * 0.18
-      this.buildingLayer.circle(px, py, radius).fill(colorForAgent(agent.kind))
+    this.syncSpriteLayer(
+      snapshot.buildings,
+      this.buildingLayer,
+      this.buildingSprites,
+      (building) => this.sprites?.building[building.kind] ?? Texture.WHITE,
+      0.86,
+    )
+    this.syncSpriteLayer(
+      snapshot.agents,
+      this.agentLayer,
+      this.agentSprites,
+      (agent) => this.sprites?.agent[agent.kind] ?? Texture.WHITE,
+      0.62,
+    )
+  }
+
+  private syncSpriteLayer<T extends { id: number; x: number; y: number }>(
+    entries: T[],
+    layer: Container,
+    spriteMap: Map<number, Sprite>,
+    textureFor: (entry: T) => Texture,
+    scale: number,
+  ): void {
+    const activeIds = new Set<number>()
+    const iconSize = this.tileSize * scale
+
+    for (const entry of entries) {
+      activeIds.add(entry.id)
+      const texture = textureFor(entry)
+
+      let sprite = spriteMap.get(entry.id)
+      if (!sprite) {
+        sprite = new Sprite(texture)
+        sprite.anchor.set(0.5)
+        sprite.roundPixels = true
+        layer.addChild(sprite)
+        spriteMap.set(entry.id, sprite)
+      } else if (sprite.texture !== texture) {
+        sprite.texture = texture
+      }
+
+      const maxBase = Math.max(texture.width, texture.height, 1)
+      const spriteScale = iconSize / maxBase
+      sprite.scale.set(spriteScale)
+      sprite.position.set(
+        entry.x * this.tileSize + this.tileSize * 0.5,
+        entry.y * this.tileSize + this.tileSize * 0.5,
+      )
+    }
+
+    for (const [id, sprite] of Array.from(spriteMap.entries())) {
+      if (activeIds.has(id)) {
+        continue
+      }
+
+      layer.removeChild(sprite)
+      sprite.destroy()
+      spriteMap.delete(id)
+    }
+  }
+
+  private clearSpriteMap(layer: Container, spriteMap: Map<number, Sprite>): void {
+    for (const sprite of spriteMap.values()) {
+      layer.removeChild(sprite)
+      sprite.destroy()
+    }
+
+    spriteMap.clear()
+  }
+
+  private async loadSprites(): Promise<void> {
+    if (this.sprites) {
+      return
+    }
+
+    const loaded = await Promise.all([
+      Assets.load<Texture>(spriteRoadUrl),
+      Assets.load<Texture>(spriteBuildingHousingUrl),
+      Assets.load<Texture>(spriteBuildingMarketUrl),
+      Assets.load<Texture>(spriteBuildingWarehouseUrl),
+      Assets.load<Texture>(spriteBuildingDepotUrl),
+      Assets.load<Texture>(spriteBuildingFoodSourceUrl),
+      Assets.load<Texture>(spriteBuildingStopUrl),
+      Assets.load<Texture>(spriteAgentCitizenUrl),
+      Assets.load<Texture>(spriteAgentCourierBotUrl),
+      Assets.load<Texture>(spriteAgentMinibusUrl),
+    ])
+
+    this.sprites = {
+      road: loaded[0],
+      building: {
+        housing: loaded[1],
+        market: loaded[2],
+        warehouse: loaded[3],
+        depot: loaded[4],
+        foodSource: loaded[5],
+        stop: loaded[6],
+      },
+      agent: {
+        citizen: loaded[7],
+        courierBot: loaded[8],
+        minibus: loaded[9],
+      },
     }
   }
 
@@ -525,40 +654,6 @@ function colorForTerrain(terrain: 'grass' | 'hill' | 'water'): number {
   }
 
   return 0x22c55e
-}
-
-function colorForBuilding(
-  kind: 'housing' | 'market' | 'warehouse' | 'depot' | 'foodSource' | 'stop',
-): number {
-  switch (kind) {
-    case 'housing':
-      return 0xfef3c7
-    case 'market':
-      return 0xf97316
-    case 'warehouse':
-      return 0x93c5fd
-    case 'depot':
-      return 0xa3a3a3
-    case 'foodSource':
-      return 0x65a30d
-    case 'stop':
-      return 0x38bdf8
-    default:
-      return 0xffffff
-  }
-}
-
-function colorForAgent(kind: 'citizen' | 'courierBot' | 'minibus'): number {
-  switch (kind) {
-    case 'citizen':
-      return 0xfef08a
-    case 'courierBot':
-      return 0x60a5fa
-    case 'minibus':
-      return 0xfca5a5
-    default:
-      return 0xffffff
-  }
 }
 
 function labelForAgent(kind: 'citizen' | 'courierBot' | 'minibus'): string {

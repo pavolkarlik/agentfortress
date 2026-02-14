@@ -133,6 +133,22 @@ body,
   font-size: 14px;
 }
 
+.game-over-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.game-over-actions button {
+  border: 1px solid #fca5a5;
+  background: #7f1d1d;
+  color: #fee2e2;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .panel label {
   display: flex;
   flex-direction: column;

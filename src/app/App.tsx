@@ -26,10 +26,35 @@ export function AppShell() {
 
   const setToolMode = useGameStore((state) => state.setToolMode)
   const setOverlayMode = useGameStore((state) => state.setOverlayMode)
+  const setSelectedTile = useGameStore((state) => state.setSelectedTile)
+  const setSelectedEntityId = useGameStore((state) => state.setSelectedEntityId)
+  const setSelectedEntityDetails = useGameStore((state) => state.setSelectedEntityDetails)
 
   const toolModeRef = useRef<ToolMode>(toolMode)
   const snapshotRef = useRef(snapshot)
   const clientRef = useRef<SimClient | null>(null)
+
+  const startNewGame = async (seedMode: 'sameSeed' | 'random'): Promise<void> => {
+    const activeClient = clientRef.current
+    if (!activeClient) {
+      return
+    }
+
+    const currentSeed = snapshotRef.current?.seed ?? INITIAL_SEED
+    const randomSeed = (Math.floor(Date.now() % 2_147_483_647) || 1) >>> 0
+    const nextSeed = seedMode === 'sameSeed' ? currentSeed : randomSeed
+
+    await activeClient.init({ seed: nextSeed, mapSize: INITIAL_MAP_SIZE })
+    const freshSnapshot = await activeClient.getSnapshot()
+
+    setSelectedTile(null)
+    setSelectedEntityId(null)
+    setSelectedEntityDetails(null)
+    useGameStore.getState().setToolMode('select')
+    useGameStore.getState().setOverlayMode('none')
+    useGameStore.getState().setSnapshot(freshSnapshot)
+    await saveGameToStorage(await activeClient.save())
+  }
 
   useEffect(() => {
     toolModeRef.current = toolMode
@@ -149,6 +174,14 @@ export function AppShell() {
       {snapshot?.gameOver ? (
         <div className="game-over-banner">
           <strong>Game Over:</strong> {snapshot.gameOverReason ?? 'Simulation ended'}
+          <div className="game-over-actions">
+            <button type="button" onClick={() => void startNewGame('sameSeed')}>
+              Restart Seed
+            </button>
+            <button type="button" onClick={() => void startNewGame('random')}>
+              New Random Seed
+            </button>
+          </div>
         </div>
       ) : null}
       <div className="app-body">
@@ -206,6 +239,9 @@ export function AppShell() {
               }
 
               await activeClient.load(blob)
+            }}
+            onNewGame={async () => {
+              await startNewGame('random')
             }}
           />
         </div>
