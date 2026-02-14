@@ -78,7 +78,7 @@ export function AppShell() {
       })
 
       await nextRenderer.mount(viewportRef.current)
-      nextRenderer.render(firstSnapshot, null, useGameStore.getState().overlayMode)
+      nextRenderer.render(firstSnapshot, null, useGameStore.getState().overlayMode, null)
       rendererRef.current = nextRenderer
     }
 
@@ -139,9 +139,9 @@ export function AppShell() {
 
   useEffect(() => {
     if (rendererRef.current && snapshot) {
-      rendererRef.current.render(snapshot, selectedTile, overlayMode)
+      rendererRef.current.render(snapshot, selectedTile, overlayMode, selectedEntityDetails)
     }
-  }, [overlayMode, snapshot, selectedTile])
+  }, [overlayMode, selectedEntityDetails, snapshot, selectedTile])
 
   return (
     <div className="app-shell">

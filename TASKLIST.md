@@ -29,3 +29,4 @@
 [x] 175 - UI walkthrough panel: progress + next step + static controls tips
 [x] 180 - Context-sensitive tips from sim state (money/queues/game-over/snapshot budget)
 [x] 185 - Walkthrough dismiss/reset with local persistence
+[x] 190 - In-world info bubbles: selected tile/entity + temporary agent action callouts

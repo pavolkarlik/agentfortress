@@ -1,6 +1,6 @@
-import { Application, Container, Graphics } from 'pixi.js'
+import { Application, Container, Graphics, Text } from 'pixi.js'
 import { clamp } from '@shared/rng'
-import type { OverlayMode, Position, SimSnapshot } from '@shared/types'
+import type { EntityDetails, OverlayMode, Position, SimSnapshot } from '@shared/types'
 
 interface CameraState {
   x: number
@@ -11,6 +11,30 @@ interface CameraState {
 interface RendererOptions {
   tileSize?: number
   onTileClick: (position: Position) => void
+}
+
+interface AgentActionBubbleState {
+  text: string
+  expiresTick: number
+}
+
+interface BubblePalette {
+  background: number
+  border: number
+  text: number
+}
+
+const ACTION_BUBBLE_LIFETIME_TICKS = 80
+const MAX_VISIBLE_AGENT_ACTION_BUBBLES = 18
+const SELECTION_BUBBLE_PALETTE: BubblePalette = {
+  background: 0x111827,
+  border: 0xfbbf24,
+  text: 0xf8fafc,
+}
+const ACTION_BUBBLE_PALETTE: BubblePalette = {
+  background: 0x0f172a,
+  border: 0x60a5fa,
+  text: 0xe2e8f0,
 }
 
 export class GameRenderer {
@@ -24,6 +48,10 @@ export class GameRenderer {
   private readonly roadLayer = new Graphics()
   private readonly buildingLayer = new Graphics()
   private readonly overlayLayer = new Graphics()
+  private readonly bubbleLayer = new Container()
+
+  private readonly lastAgentDecisionKeys = new Map<number, string>()
+  private readonly agentActionBubbles = new Map<number, AgentActionBubbleState>()
 
   private camera: CameraState = { x: 16, y: 16, zoom: 1 }
 
@@ -55,6 +83,7 @@ export class GameRenderer {
     this.worldLayer.addChild(this.roadLayer)
     this.worldLayer.addChild(this.buildingLayer)
     this.worldLayer.addChild(this.overlayLayer)
+    this.worldLayer.addChild(this.bubbleLayer)
     app.stage.addChild(this.worldLayer)
     this.applyCamera()
 
@@ -63,16 +92,25 @@ export class GameRenderer {
     this.removeInputListeners = this.setupInputListeners(app.canvas)
   }
 
-  render(snapshot: SimSnapshot, selectedTile: Position | null, overlayMode: OverlayMode): void {
+  render(
+    snapshot: SimSnapshot,
+    selectedTile: Position | null,
+    overlayMode: OverlayMode,
+    selectedEntityDetails: EntityDetails | null = null,
+  ): void {
+    this.updateAgentActionBubbles(snapshot)
     this.drawTerrain(snapshot)
     this.drawRoads(snapshot)
     this.drawBuildings(snapshot)
     this.drawOverlay(snapshot, selectedTile, overlayMode)
+    this.drawBubbles(snapshot, selectedTile, selectedEntityDetails)
   }
 
   destroy(): void {
     this.removeInputListeners?.()
     this.removeInputListeners = null
+    this.lastAgentDecisionKeys.clear()
+    this.agentActionBubbles.clear()
 
     if (this.app) {
       this.app.destroy(true)
@@ -178,6 +216,182 @@ export class GameRenderer {
         this.tileSize,
       )
       .stroke({ color: 0xfbbf24, width: 3, alpha: 1 })
+  }
+
+  private drawBubbles(
+    snapshot: SimSnapshot,
+    selectedTile: Position | null,
+    selectedEntityDetails: EntityDetails | null,
+  ): void {
+    this.clearBubbleLayer()
+    this.drawSelectedBubble(snapshot, selectedTile, selectedEntityDetails)
+    this.drawAgentActionBubbles(snapshot)
+  }
+
+  private drawSelectedBubble(
+    snapshot: SimSnapshot,
+    selectedTile: Position | null,
+    selectedEntityDetails: EntityDetails | null,
+  ): void {
+    if (!selectedTile) {
+      return
+    }
+
+    const selectedAgent = snapshot.agents.find(
+      (agent) => agent.x === selectedTile.x && agent.y === selectedTile.y,
+    )
+    const selectedBuilding = snapshot.buildings.find(
+      (building) => building.x === selectedTile.x && building.y === selectedTile.y,
+    )
+    const selectedRoad = snapshot.roads.find(
+      (road) => road.x === selectedTile.x && road.y === selectedTile.y,
+    )
+
+    let bubbleX = selectedTile.x * this.tileSize + this.tileSize * 0.5
+    let bubbleY = selectedTile.y * this.tileSize + this.tileSize * 0.5
+    const lines: string[] = []
+
+    if (selectedAgent) {
+      bubbleX = selectedAgent.x * this.tileSize + this.tileSize * 0.5
+      bubbleY = selectedAgent.y * this.tileSize + this.tileSize * 0.5
+      lines.push(`${labelForAgent(selectedAgent.kind)} #${selectedAgent.id}`)
+      if (selectedEntityDetails?.entityId === selectedAgent.id) {
+        lines.push(selectedEntityDetails.doing)
+      } else {
+        lines.push(selectedAgent.lastDecision || 'Idle')
+      }
+    } else if (selectedBuilding) {
+      bubbleX = selectedBuilding.x * this.tileSize + this.tileSize * 0.5
+      bubbleY = selectedBuilding.y * this.tileSize + this.tileSize * 0.5
+      lines.push(`${labelForBuilding(selectedBuilding.kind)} #${selectedBuilding.id}`)
+      lines.push(`Food ${selectedBuilding.food} | Upkeep ${selectedBuilding.upkeep}`)
+    } else if (selectedRoad) {
+      bubbleX = selectedRoad.x * this.tileSize + this.tileSize * 0.5
+      bubbleY = selectedRoad.y * this.tileSize + this.tileSize * 0.5
+      lines.push(`Road #${selectedRoad.id}`)
+      lines.push(`Tile ${selectedTile.x},${selectedTile.y}`)
+    } else {
+      lines.push(`Tile ${selectedTile.x},${selectedTile.y}`)
+      lines.push('Empty')
+    }
+
+    const normalized = lines.map((line) => truncateLine(line, 42))
+    this.drawBubble(
+      bubbleX,
+      bubbleY - this.tileSize * 0.18,
+      normalized,
+      SELECTION_BUBBLE_PALETTE,
+      this.tileSize * 7.8,
+    )
+  }
+
+  private drawAgentActionBubbles(snapshot: SimSnapshot): void {
+    let visible = 0
+
+    for (const agent of snapshot.agents) {
+      if (visible >= MAX_VISIBLE_AGENT_ACTION_BUBBLES) {
+        break
+      }
+
+      const bubble = this.agentActionBubbles.get(agent.id)
+      if (!bubble || bubble.expiresTick <= snapshot.tick) {
+        continue
+      }
+
+      visible += 1
+      this.drawBubble(
+        agent.x * this.tileSize + this.tileSize * 0.5,
+        agent.y * this.tileSize + this.tileSize * 0.25,
+        [truncateLine(bubble.text, 32)],
+        ACTION_BUBBLE_PALETTE,
+        this.tileSize * 6.6,
+      )
+    }
+  }
+
+  private updateAgentActionBubbles(snapshot: SimSnapshot): void {
+    const activeAgentIds = new Set<number>()
+
+    for (const agent of snapshot.agents) {
+      activeAgentIds.add(agent.id)
+      const decisionKey = `${agent.lastDecision}::${agent.lastReason}`
+      const previousDecisionKey = this.lastAgentDecisionKeys.get(agent.id)
+
+      if (previousDecisionKey !== undefined && previousDecisionKey !== decisionKey) {
+        const decisionText = agent.lastDecision.trim()
+        if (decisionText.length > 0) {
+          this.agentActionBubbles.set(agent.id, {
+            text: decisionText,
+            expiresTick: snapshot.tick + ACTION_BUBBLE_LIFETIME_TICKS,
+          })
+        }
+      }
+
+      this.lastAgentDecisionKeys.set(agent.id, decisionKey)
+    }
+
+    for (const id of Array.from(this.lastAgentDecisionKeys.keys())) {
+      if (!activeAgentIds.has(id)) {
+        this.lastAgentDecisionKeys.delete(id)
+      }
+    }
+
+    for (const [id, bubble] of Array.from(this.agentActionBubbles.entries())) {
+      if (!activeAgentIds.has(id) || bubble.expiresTick <= snapshot.tick) {
+        this.agentActionBubbles.delete(id)
+      }
+    }
+  }
+
+  private clearBubbleLayer(): void {
+    const children = this.bubbleLayer.removeChildren()
+    for (const child of children) {
+      child.destroy()
+    }
+  }
+
+  private drawBubble(
+    worldX: number,
+    worldY: number,
+    lines: string[],
+    palette: BubblePalette,
+    maxWidth: number,
+  ): void {
+    if (lines.length === 0) {
+      return
+    }
+
+    const padding = Math.max(4, Math.floor(this.tileSize * 0.18))
+    const fontSize = Math.max(10, Math.floor(this.tileSize * 0.42))
+    const text = new Text({
+      text: lines.join('\n'),
+      style: {
+        fill: palette.text,
+        fontFamily: 'Segoe UI, Tahoma, sans-serif',
+        fontSize,
+        lineHeight: Math.round(fontSize * 1.22),
+        wordWrap: true,
+        wordWrapWidth: maxWidth - padding * 2,
+      },
+    })
+    text.position.set(padding, padding)
+
+    const width = Math.max(text.width + padding * 2, this.tileSize * 2.2)
+    const height = text.height + padding * 2
+
+    const background = new Graphics()
+    background.roundRect(0, 0, width, height, 6).fill({ color: palette.background, alpha: 0.94 })
+    background.roundRect(0, 0, width, height, 6).stroke({
+      color: palette.border,
+      width: 1.5,
+      alpha: 1,
+    })
+
+    const container = new Container()
+    container.addChild(background)
+    container.addChild(text)
+    container.position.set(worldX - width * 0.5, worldY - height - this.tileSize * 0.25)
+    this.bubbleLayer.addChild(container)
   }
 
   private setupInputListeners(canvas: HTMLCanvasElement): () => void {
@@ -345,4 +559,46 @@ function colorForAgent(kind: 'citizen' | 'courierBot' | 'minibus'): number {
     default:
       return 0xffffff
   }
+}
+
+function labelForAgent(kind: 'citizen' | 'courierBot' | 'minibus'): string {
+  switch (kind) {
+    case 'citizen':
+      return 'Citizen'
+    case 'courierBot':
+      return 'CourierBot'
+    case 'minibus':
+      return 'Minibus'
+    default:
+      return 'Agent'
+  }
+}
+
+function labelForBuilding(
+  kind: 'housing' | 'market' | 'warehouse' | 'depot' | 'foodSource' | 'stop',
+): string {
+  switch (kind) {
+    case 'housing':
+      return 'Housing'
+    case 'market':
+      return 'Market'
+    case 'warehouse':
+      return 'Warehouse'
+    case 'depot':
+      return 'Depot'
+    case 'foodSource':
+      return 'Food Source'
+    case 'stop':
+      return 'Stop'
+    default:
+      return 'Building'
+  }
+}
+
+function truncateLine(line: string, maxChars: number): string {
+  if (line.length <= maxChars) {
+    return line
+  }
+
+  return `${line.slice(0, Math.max(0, maxChars - 3))}...`
 }
